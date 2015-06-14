@@ -1,7 +1,7 @@
 OUTPUT   = metaweather
-CC       = clang
-CXXFLAGS = -std=c++14 -Wall -Wextra -pedantic -Wno-unused-variable -Wno-reorder
-LDFLAGS  = -lstdc++ -lcurl
+CC       = g++
+CXXFLAGS = -std=c++1z -Wall -Wextra -pedantic -Wno-unused-variable -Wno-reorder
+LDFLAGS  = -lcurl
 
 OPTIM    = -Ofast
 SRCDIR   = .

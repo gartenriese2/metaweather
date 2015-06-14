@@ -1,52 +1,85 @@
 #include <iostream>
 #include <string>
 #include <cstdlib>
+#include <memory>
 #include <curl/curl.h>
-using namespace std;
+
+static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp);
+
+class Curl {
+public:
+    Curl()
+     :  m_handle{curl_easy_init()}
+    {
+        if (!m_handle)
+        {
+            std::cerr << "Curl could not be initialized!\n";
+        }
+    }
+    ~Curl()
+    {
+        curl_easy_cleanup(m_handle);
+    }
+    void request(const std::string& url) const
+    {
+        curl_easy_setopt(m_handle, CURLOPT_URL, url.c_str());
+    }
+    void setWriteCallback() const
+    {
+        curl_easy_setopt(m_handle, CURLOPT_WRITEFUNCTION, WriteCallback);
+    }
+    void writeData(std::string* buf)
+    {
+        curl_easy_setopt(m_handle, CURLOPT_WRITEDATA, buf);
+    }
+    const CURLcode perform()
+    {
+        return curl_easy_perform(m_handle);
+    }
+private:
+    CURL* m_handle;
+};
 
 // https://stackoverflow.com/questions/9786150/save-curl-content-result-into-a-string-in-c
-static size_t WriteCallback( void *contents, size_t size, size_t nmemb, void *userp )
+static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp)
 {
-    ( ( std::string* )userp )->append( ( char* )contents, size * nmemb );
+    (static_cast<std::string*>(userp))->append(static_cast<char*>(contents), size * nmemb);
     return size * nmemb;
 }
 
-float temperature( const string& location )
+float temperature(const std::string& location)
 {
-    CURL *curl;
-    CURLcode res;
+    
+    const std::string request {"http://api.openweathermap.org/data/2.5/weather?q=" + location + ",de&units=metric"};
 
-    string request = "http://api.openweathermap.org/data/2.5/weather?q=" + location + ",de&units=metric";
-    string readBuffer;
+    // std::cout << "requesting '"  << request << "'" << std::endl;
 
-    // cout << "requesting '"  << request << "'" << endl;
+    auto curl{std::make_unique<Curl>()};
+    curl->request(request);
+    curl->setWriteCallback();
+    std::string readBuffer;
+    curl->writeData(&readBuffer);
+    
+    const auto res = curl->perform();
 
-    curl = curl_easy_init();
-    if( !curl ) 
-        cerr << "curl error" << endl;
+    // std::cout << readBuffer << std::endl;
 
-    curl_easy_setopt( curl, CURLOPT_URL, request.c_str() );
-    curl_easy_setopt( curl, CURLOPT_WRITEFUNCTION, WriteCallback );
-    curl_easy_setopt( curl, CURLOPT_WRITEDATA, &readBuffer );
-    res = curl_easy_perform( curl );
-    curl_easy_cleanup( curl );
+    const size_t found = readBuffer.find("\"temp\":");
+    if (found == std::string::npos)
+    {
+        std::cerr << "temperature could not be found" << std::endl;
+    }
 
-    // cout << readBuffer << endl;
+    std::string temp = readBuffer.substr(found);
+    constexpr size_t magic = 7;
+    temp = temp.substr(magic, temp.find(",") - magic);
 
-    size_t found = readBuffer.find( "\"temp\":" );
-    if( found == string::npos )
-        cerr << "temperature could not be found" << endl;
-
-    string temp = readBuffer.substr( found );
-    size_t magic = 7;
-    temp = temp.substr( magic, temp.find( "," ) - magic );
-
-    return strtof( temp.c_str(), nullptr );
+    return strtof(temp.c_str(), nullptr);
 }
 
-int main( int argc, char** argv )
+int main()
 {
-    float t = temperature( "erlangen" );
-    cout << "Temperature in Erlangen is " << t << " degrees"  << endl;
-    return 0;
+    const float t = temperature("erlangen");
+    std::cout << "Temperature in Erlangen is " << t << " degrees (Celsius)" << std::endl;
+    return EXIT_SUCCESS;
 }
